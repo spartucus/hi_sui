@@ -1,18 +1,18 @@
-/*
 #[test_only]
 module sui_hi::sui_hi_tests;
-// uncomment this line to import the module
-// use sui_hi::sui_hi;
 
-const ENotImplemented: u64 = 0;
+use sui::sui::SUI;
+use std::type_name;
 
 #[test]
-fun test_sui_hi() {
-    // pass
-}
+fun test_sui_typename() {
+    let name = type_name::with_defining_ids<SUI>();
+    let name_string = name.into_string();
+    std::debug::print(&name_string); // "0000000000000000000000000000000000000000000000000000000000000002::sui::SUI"
 
-#[test, expected_failure(abort_code = ::sui_hi::sui_hi_tests::ENotImplemented)]
-fun test_sui_hi_fail() {
-    abort ENotImplemented
+    let name_string2 = name.module_string();
+    std::debug::print(&name_string2); // "sui"
+
+    let name_string3 = name.address_string();
+    std::debug::print(&name_string3); // "0000000000000000000000000000000000000000000000000000000000000002"
 }
-*/
