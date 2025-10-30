@@ -65,6 +65,9 @@ This repository contains a set of shell scripts that walk through the full lifec
 
 
 ### Usage
+
+Setup 2 accounts and get from faucet, then replace the addresses in the scripts scripts/0_setup.sh.
+
 ```bash
 ./scripts/0_setup.sh
 ./scripts/1_publish.sh

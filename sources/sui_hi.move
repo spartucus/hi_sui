@@ -8,8 +8,6 @@ module sui_hi::marketplace {
     // ============ 错误码 ============
     const EInsufficientPayment: u64 = 1;
     const ENotOwner: u64 = 2;
-    #[allow(unused_const)]
-    const ENotForSale: u64 = 3;
 
     // ============ 能力展示 ============
     
@@ -92,7 +90,7 @@ module sui_hi::marketplace {
         let admin = AdminCap {
             id: object::new(ctx),
         };
-        transfer::transfer(admin, tx_context::sender(ctx));
+        transfer::transfer(admin, ctx.sender());
     }
 
     // ============ NFT铸造 ============
@@ -112,19 +110,19 @@ module sui_hi::marketplace {
             name,
             description,
             url,
-            creator: tx_context::sender(ctx),
+            creator: ctx.sender(),
         };
         
         let nft_id = object::id(&nft);
         
         event::emit(NFTMinted {
             nft_id,
-            creator: tx_context::sender(ctx),
+            creator: ctx.sender(),
             name: minted_name,
         });
 
         // transfer: 转移所有权给指定地址（对象变成owned）
-        transfer::public_transfer(nft, recipient);
+        transfer::transfer(nft, recipient);
     }
 
     public fun mint_and_share_nft(
@@ -140,7 +138,7 @@ module sui_hi::marketplace {
             name,
             description,
             url,
-            creator: tx_context::sender(ctx),
+            creator: ctx.sender(),
         };
 
         let nft_id = object::id(&nft);
@@ -190,7 +188,7 @@ module sui_hi::marketplace {
         ctx: &mut TxContext
     ) {
         let nft_id = object::id(&nft);
-        let seller = tx_context::sender(ctx);
+        let seller = ctx.sender();
 
         // 创建Listing并将NFT包装进去
         let listing = Listing {
@@ -218,7 +216,7 @@ module sui_hi::marketplace {
         mut payment: Coin<SUI>,
         ctx: &mut TxContext
     ) {
-        let buyer = tx_context::sender(ctx);
+        let buyer = ctx.sender();
         
         // 验证支付金额
         let payment_value = coin::value(&payment);
@@ -254,7 +252,7 @@ module sui_hi::marketplace {
         let nft_id = object::id(&nft);
 
         // 转移NFT给买家
-        transfer::public_transfer(nft, buyer);
+        transfer::transfer(nft, buyer);
 
         event::emit(NFTSold {
             nft_id,
@@ -273,7 +271,7 @@ module sui_hi::marketplace {
         mut listing: Listing,
         ctx: &mut TxContext
     ) {
-        let sender = tx_context::sender(ctx);
+        let sender = ctx.sender();
         
         // 只有卖家可以取消
         assert!(listing.seller == sender, ENotOwner);
@@ -282,7 +280,7 @@ module sui_hi::marketplace {
         let Listing { id, nft, price: _, seller } = listing;
 
         // 将NFT归还给卖家
-        transfer::public_transfer(nft, seller);
+        transfer::transfer(nft, seller);
         
         // 删除Listing对象
         object::delete(id);
