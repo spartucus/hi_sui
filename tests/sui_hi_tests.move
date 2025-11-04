@@ -5,6 +5,7 @@ use sui::sui::SUI;
 use sui::coin::{Coin, Self};
 use std::type_name;
 use sui::{test_scenario::{begin, ctx, end}};
+use sui::poseidon;
 
 #[test]
 fun test_sui_typename() {
@@ -47,4 +48,14 @@ fun test_deposit() {
     deposit(coin, ctx);
 
     end(scenario);
+}
+
+#[test]
+fun test_poseidon() {
+    let a = 18586133768512220936620570745912940619677854269274689475585506675881198879027;
+    let b = poseidon::poseidon_bn254(&vector[a]);
+    std::debug::print(&b);
+
+    let c = 17744324452969507964952966931655538206777558023197549666337974697819074895989;
+    assert!(b == c, 1);
 }

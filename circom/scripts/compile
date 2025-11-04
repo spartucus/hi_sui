@@ -1,0 +1,335 @@
+#!/usr/bin/env node
+const os = require("node:os");
+const fs = require("node:fs/promises");
+const process = require("node:process");
+const path = require("path");
+const { spawn } = require("node:child_process");
+
+const BUILD_DIR = path.join(__dirname, "../build");
+const SRC_DIR = path.join(__dirname, "../src");
+const CIRCOM_EXTENSION = ".circom";
+
+async function main() {
+  const args = cliArguments();
+
+  const help = asBooleanFlag(args.help ?? args.h);
+  const force = asBooleanFlag(args.force ?? args.f);
+  const jobsRaw = args.jobs ?? args.j;
+
+  if (help) {
+      console.log("Usage: ./scripts/compile [OPTIONS]");
+      console.log("Options:");
+    console.log("  --force           Force recompile of all circuits");
+    console.log("  --help            Show this help message");
+    console.log("  --jobs, -j <N>    Number of parallel workers (default: CPU count)");
+    process.exit(0);
+  }
+
+  if (!(await pathExists(SRC_DIR))) {
+    console.log(`No circuits found. Directory '${SRC_DIR}' does not exist.`);
+    return;
+  }
+
+  await fs.mkdir(BUILD_DIR, { recursive: true });
+
+  const circuits = await discoverCircuits(SRC_DIR);
+  if (circuits.length === 0) {
+    console.log(`No .circom files found under '${SRC_DIR}'.`);
+    return;
+  }
+
+  const parallelism = determineConcurrency(jobsRaw, circuits.length);
+
+  console.log(
+    `Found ${circuits.length} circuit(s). Compiling with ${parallelism} parallel worker(s).`
+  );
+
+  const queue = circuits.map((circuitPath) => async () => {
+    const relativePath = path.relative(SRC_DIR, circuitPath);
+    const circuitDir = path.dirname(relativePath);
+    const baseName = path.basename(relativePath, CIRCOM_EXTENSION);
+    const outputDir = path.join(
+      BUILD_DIR,
+      circuitDir === "." ? "" : circuitDir
+    );
+
+    await fs.mkdir(outputDir, { recursive: true });
+
+    const markerPath = path.join(
+      outputDir,
+      `${baseName}${CIRCOM_EXTENSION}.compiled`
+    );
+
+    if (!force && (await pathExists(markerPath))) {
+      console.log(`${relativePath} already compiled`);
+        return;
+      }
+  
+    console.log(`\nCOMPILING ${relativePath}`);
+
+    const compileArgs = [
+      circuitPath,
+          "--r1cs",
+          "--sym",
+          "--json",
+          "--wasm",
+          "--wat",
+          "--c",
+          "--output",
+      outputDir,
+    ];
+
+    try {
+      await run("circom", compileArgs, { cwd: path.dirname(circuitPath) });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : String(error ?? "unknown error");
+      console.error(`Failed to compile ${relativePath}: ${message}`);
+      throw error;
+    }
+
+    console.log(`COMPILED ${relativePath}`);
+
+    await fs.writeFile(markerPath, new Uint8Array([]));
+  });
+
+  await processParallel(queue, parallelism);
+}
+
+void main().catch((error) => {
+  if (error instanceof Error) {
+    console.error(error.message);
+  } else {
+    console.error(error);
+  }
+  process.exit(1);
+});
+
+function cliArguments() {
+  const argv = process.argv.slice(2);
+  const result = {};
+  const positional = [];
+
+  for (let i = 0; i < argv.length; i += 1) {
+    const token = argv[i];
+
+    if (token.startsWith("--")) {
+      const [rawKey, rawValue] = token.slice(2).split("=", 2);
+      if (!rawKey) {
+        continue;
+      }
+
+      if (rawValue !== undefined) {
+        result[rawKey] = rawValue === "" ? true : rawValue;
+        continue;
+      }
+
+      const next = argv[i + 1];
+      if (next && !next.startsWith("-")) {
+        result[rawKey] = next;
+        i += 1;
+      } else {
+        result[rawKey] = true;
+      }
+      continue;
+    }
+
+    if (token.startsWith("-") && token.length > 1) {
+      const rawKey = token.slice(1);
+      const next = argv[i + 1];
+
+      if (rawKey === "j") {
+        if (next && !next.startsWith("-")) {
+          result.jobs = next;
+          i += 1;
+        } else {
+          result.jobs = true;
+        }
+        continue;
+      }
+
+      result[rawKey] = true;
+      continue;
+    }
+
+    positional.push(token);
+  }
+
+  if (positional.length > 0) {
+    result._ = positional;
+  }
+
+  return result;
+}
+
+async function pathExists(targetPath) {
+  try {
+    await fs.access(targetPath);
+    return true;
+  } catch (error) {
+    if (error && (error.code === "ENOENT" || error.code === "ENOTDIR")) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+async function discoverCircuits(rootDir) {
+  const circuits = [];
+
+  async function walk(currentDir) {
+    let entries;
+    try {
+      entries = await fs.readdir(currentDir, { withFileTypes: true });
+    } catch (error) {
+      if (error && error.code === "ENOENT") {
+        return;
+      }
+      throw error;
+    }
+
+    const sortedEntries = entries.sort((a, b) => a.name.localeCompare(b.name));
+
+    for (const entry of sortedEntries) {
+      const entryPath = path.join(currentDir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(entryPath);
+        continue;
+      }
+
+      if (entry.isFile() && entry.name.endsWith(CIRCOM_EXTENSION)) {
+        circuits.push(entryPath);
+      }
+    }
+  }
+
+  await walk(rootDir);
+  return circuits;
+}
+
+function determineConcurrency(rawValue, taskCount) {
+  const cpuCount = typeof os.availableParallelism === "function"
+    ? os.availableParallelism()
+    : Math.max(os.cpus()?.length ?? 1, 1);
+  const defaultWorkers = Math.max(1, Math.min(cpuCount, taskCount || cpuCount));
+
+  if (rawValue === undefined || rawValue === true) {
+    return defaultWorkers;
+  }
+
+  const parsed = Number.parseInt(rawValue, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    console.warn(
+      `Invalid value for --jobs ('${rawValue}'). Using default of ${defaultWorkers}.`
+    );
+    return defaultWorkers;
+  }
+
+  return Math.max(1, Math.min(parsed, taskCount || parsed));
+}
+
+async function run(command, args = [], options = {}, inheritIO = true) {
+  return new Promise((resolve, reject) => {
+    const spawnOptions = {
+      stdio: inheritIO ? "inherit" : ["ignore", "pipe", "pipe"],
+      ...options,
+    };
+
+    const child = spawn(command, args, spawnOptions);
+
+    const collected = [];
+    if (!inheritIO) {
+      const collect = (chunk) => {
+        const text = chunk.toString();
+        for (const line of text.split(/\r?\n/)) {
+          if (line.trim() !== "") {
+            collected.push(line);
+          }
+        }
+      };
+
+      if (child.stdout) {
+        child.stdout.on("data", collect);
+      }
+      if (child.stderr) {
+        child.stderr.on("data", collect);
+      }
+    }
+
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code !== 0) {
+        const error = new Error(
+          `Command failed (${command} ${args.join(" ")}): exited with code ${code}`
+        );
+        error.code = code;
+        error.output = collected;
+        reject(error);
+        return;
+      }
+
+      resolve({ code, output: collected });
+    });
+  });
+}
+
+function asBooleanFlag(value) {
+  if (value === undefined) {
+    return false;
+  }
+
+  if (value === true || value === false) {
+    return value;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  if (normalized === "" || normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "y") {
+    return true;
+  }
+
+  if (normalized === "0" || normalized === "false" || normalized === "no" || normalized === "n") {
+    return false;
+  }
+
+  return true;
+}
+
+async function processParallel(tasks, concurrency) {
+  if (tasks.length === 0) {
+    return;
+  }
+
+  const workerCount = Math.max(1, Math.min(concurrency, tasks.length));
+  let nextIndex = 0;
+  let failure;
+
+  async function worker() {
+    while (true) {
+      if (failure) {
+        return;
+      }
+
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+
+      if (currentIndex >= tasks.length) {
+        return;
+      }
+
+      try {
+        await tasks[currentIndex]();
+      } catch (error) {
+        if (!failure) {
+          failure = error;
+        }
+        return;
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+
+  if (failure) {
+    throw failure;
+  }
+}

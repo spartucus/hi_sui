@@ -1,0 +1,14 @@
+{
+  "license": "SEE LICENSE IN License.md",
+  "name": "circuits",
+  "version": "2.0.0",
+  "description": "circom circuits",
+  "scripts": {
+    "build": "./scripts/compile",
+    "clean": "./scripts/clean",
+    "generate": "./scripts/generate_witness"
+  },
+  "dependencies": {
+    "circomlib": "2.0.5"
+  }
+}

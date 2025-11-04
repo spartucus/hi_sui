@@ -1,0 +1,21 @@
+#!/usr/bin/env node
+const path = require("node:path");
+const fs = require("node:fs");
+const fsp = require("node:fs/promises");
+
+// Constants
+const BUILD_DIR = path.join(__dirname, "../build");
+
+function pathExists(path) {
+    return fs.existsSync(path);
+  }
+
+async function main() {
+  if (!pathExists(BUILD_DIR)) {
+    return;
+  }
+
+  await fsp.rm(BUILD_DIR, { recursive: true, force: true });
+}
+
+void main();

@@ -1,3 +1,6 @@
 build/*
 .trace
 .coverage*
+
+circom/build
+circom/node_modules
