@@ -106,15 +106,7 @@ sui client call \
     --args {NFT_ID} \
     --gas-budget 10000000
 
-# 7. Share NFT
-sui client call \
-    --package \$PACKAGE_ID \
-    --module marketplace \
-    --function share_nft \
-    --args {NFT_ID} \
-    --gas-budget 10000000
-
-# 8. Update fee (requires AdminCap)
+# 7. Update fee (requires AdminCap)
 sui client call \
     --package \$PACKAGE_ID \
     --module marketplace \
@@ -122,7 +114,7 @@ sui client call \
     --args \$ADMIN_CAP_ID \$MARKETPLACE_ID 5 \
     --gas-budget 10000000
 
-# 9. Withdraw fees (requires AdminCap)
+# 8. Withdraw fees (requires AdminCap)
 sui client call \
     --package \$PACKAGE_ID \
     --module marketplace \

@@ -172,12 +172,6 @@ module sui_hi::marketplace {
         transfer::freeze_object(nft);
     }
 
-    // 4. transfer::share_object - 转为共享对象
-    #[allow(lint(custom_state_change), lint(share_owned))]
-    public fun share_nft(nft: NFT) {
-        transfer::share_object(nft);
-    }
-
     // ============ 市场功能 - 展示Coin处理 ============
     
     // 挂单出售NFT - 使用wrapping模式
@@ -198,14 +192,14 @@ module sui_hi::marketplace {
             seller,
         };
 
+        // 将包含NFT的Listing转为共享对象
+        transfer::share_object(listing);
+
         event::emit(NFTListed {
             nft_id,
             price,
             seller,
         });
-
-        // 将包含NFT的Listing转为共享对象
-        transfer::share_object(listing);
     }
 
     // 购买NFT - 展示接收和处理Coin
@@ -254,15 +248,15 @@ module sui_hi::marketplace {
         // 转移NFT给买家
         transfer::transfer(nft, buyer);
 
+        // 删除Listing对象
+        object::delete(id);
+
         event::emit(NFTSold {
             nft_id,
             price,
             seller,
             buyer,
         });
-
-        // 删除Listing对象
-        object::delete(id);
     }
 
     // 取消挂单 - 从Listing中取回NFT
