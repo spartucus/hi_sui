@@ -13,9 +13,9 @@ fun test_sui_typename() {
     let name_string = name.into_string();
     std::debug::print(&name_string); // "0000000000000000000000000000000000000000000000000000000000000002::sui::SUI"
     let name_string = std::string::from_ascii(name_string);
-    std::debug::print(&name_string);
+    std::debug::print(&name_string); // "0000000000000000000000000000000000000000000000000000000000000002::sui::SUI"
     let serialized_name = sui::bcs::to_bytes(&name);
-    std::debug::print(&serialized_name); // "0000000000000000000000000000000000000000000000000000000000000002::sui::SUI"
+    std::debug::print(&serialized_name);
 
     let name_string2 = name.module_string();
     std::debug::print(&name_string2); // "sui"
